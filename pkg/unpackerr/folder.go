@@ -318,7 +318,7 @@ func (f *Folders) handleFileEvent(name string) {
 
 // processEvent processes the event that was received.
 func (f *Folders) processEvent(event *eventData) {
-	dirPath := filepath.Join(event.cnfg.Path, event.name)
+	dirPath := filepath.Join(event.cnfg.Path, event.file)
 	if stat, err := os.Stat(dirPath); err != nil {
 		// Item is unusable (probably deleted), remove it from history.
 		if _, ok := f.Folders[dirPath]; ok {
@@ -327,7 +327,7 @@ func (f *Folders) processEvent(event *eventData) {
 			f.Remove(dirPath)
 		}
 
-		f.Debugf("Folder: Ignored File Event: %v (unreadable)", event.file)
+		f.Printf("[ERROR] Folder: Ignored File Event: %v (unreadable: %v)", event.file, err)
 
 		return
 	} else if !stat.IsDir() {
