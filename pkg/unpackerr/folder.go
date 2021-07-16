@@ -59,23 +59,30 @@ type eventData struct {
 }
 
 func (u *Unpackerr) logFolders() {
-	if epath, c := "", len(u.Folders); c == 1 {
-		if u.Folders[0].ExtractPath != "" {
-			epath = ", extract to: " + u.Folders[0].ExtractPath
+	if len(u.Folders) == 1 {
+		f := u.Folders[0]
+
+		epath := ""
+		if f.ExtractPath != "" {
+			epath = ", extract to: " + f.ExtractPath
 		}
 
-		u.Printf(" => Folder Config: 1 path: %s%s (delete after:%v, delete orig:%v, move back:%v, event buffer:%d)",
-			u.Folders[0].Path, epath, u.Folders[0].DeleteAfter, u.Folders[0].DeleteOrig, u.Folders[0].MoveBack, u.Buffer)
-	} else {
-		u.Print(" => Folder Config:", c, "paths,", "event buffer:", u.Buffer)
+		u.Printf(" => Folder Config: 1 path: %s%s (delete after:%v, delete files/orig:%v/%v, move back:%v, event buffer:%d)",
+			f.Path, epath, f.DeleteAfter, f.DeleteFiles, f.DeleteOrig, f.MoveBack, u.Buffer)
 
-		for _, f := range u.Folders {
-			if epath = ""; f.ExtractPath != "" {
-				epath = ", extract to: " + f.ExtractPath
-			}
-			u.Printf(" =>    Path: %s%s (delete after:%v, delete orig:%v, move back:%v)",
-				f.Path, epath, f.DeleteAfter, f.DeleteOrig, f.MoveBack)
+		return
+	}
+
+	u.Print(" => Folder Config:", len(u.Folders), "paths,", "event buffer:", u.Buffer)
+
+	for _, f := range u.Folders {
+		epath := ""
+		if f.ExtractPath != "" {
+			epath = ", extract to: " + f.ExtractPath
 		}
+
+		u.Printf(" =>    Path: %s%s (delete after:%v, delete files/orig:%v/%v, move back:%v)",
+			f.Path, epath, f.DeleteAfter, f.DeleteFiles, f.DeleteOrig, f.MoveBack)
 	}
 }
 
@@ -318,42 +325,41 @@ func (f *Folders) handleFileEvent(name string) {
 
 // processEvent processes the event that was received.
 func (f *Folders) processEvent(event *eventData) {
-	dirPath := filepath.Join(event.cnfg.Path, event.file)
-	if stat, err := os.Stat(dirPath); err != nil {
+	if stat, err := os.Stat(event.file); err != nil {
 		// Item is unusable (probably deleted), remove it from history.
-		if _, ok := f.Folders[dirPath]; ok {
-			f.Debugf("Folder: Removing Tracked Item: %v", dirPath)
-			delete(f.Folders, dirPath)
-			f.Remove(dirPath)
+		if _, ok := f.Folders[event.file]; ok {
+			f.Debugf("Folder: Removing Tracked Item: %v: %v", event.file, err)
+			delete(f.Folders, event.file)
+			f.Remove(event.file)
 		}
 
 		f.Printf("[ERROR] Folder: Ignored File Event: %v (unreadable: %v)", event.file, err)
 
 		return
 	} else if !stat.IsDir() {
-		f.Debugf("Folder: Ignoring Item: %v (not a folder)", dirPath)
+		f.Debugf("Folder: Ignoring Item: %v (not a folder)", event.file)
 
 		return
 	}
 
-	if _, ok := f.Folders[dirPath]; ok {
+	if _, ok := f.Folders[event.file]; ok {
 		// f.Debugf("Item Updated: %v", event.file)
-		f.Folders[dirPath].last = time.Now()
+		f.Folders[event.file].last = time.Now()
 
 		return
 	}
 
-	if err := f.Add(dirPath); err != nil {
+	if err := f.Add(event.file); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			f.Printf("[ERROR] Folder: Tracking New Item: %v: %v", dirPath, err)
+			f.Printf("[ERROR] Folder: Tracking New Item: %v: %v", event.file, err)
 		}
 
 		return
 	}
 
-	f.Printf("[Folder] Tracking New Item: %v", dirPath)
+	f.Printf("[Folder] Tracking New Item: %v", event.file)
 
-	f.Folders[dirPath] = &Folder{
+	f.Folders[event.file] = &Folder{
 		last: time.Now(),
 		step: WAITING,
 		cnfg: event.cnfg,
